@@ -1,83 +1,74 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
-st.set_page_config(page_title="Efficiency Checker", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Line–Style–Layout Generator", page_icon="📊", layout="wide")
 
-st.title("📊 Efficiency Checker Tool")
-st.write("อัปโหลดไฟล์ทั้ง 3 แล้วกดปุ่มเพื่อดูพนักงานที่ยังไม่มีค่า Eff")
+st.title("📊 Line × Style × Layout Generator")
+st.write("อัปโหลด 3 ไฟล์แล้วระบบจะสร้างตาราง Mapping ให้อัตโนมัติ")
 
-# ---------------------------------------------------------
-# 1. Upload files
-# ---------------------------------------------------------
-manpower_file = st.file_uploader("📂 Upload Manpower CSV", type=["csv"])
-stylelist_file = st.file_uploader("📂 Upload Stylelist CSV", type=["csv"])
-raweff_file = st.file_uploader("📂 Upload Raweff CSV", type=["csv"])
+# -------------------------------------------------------
+# 1. Upload Files
+# -------------------------------------------------------
+st.header("📂 Upload Files")
 
-if manpower_file and stylelist_file and raweff_file:
-    st.success("✅ Upload ครบทั้ง 3 ไฟล์แล้ว พร้อมตรวจสอบ")
+loc_file = st.file_uploader("📌 Upload Location file (Lines)", type=["xlsx", "csv"])
+style_file = st.file_uploader("📌 Upload style_list file (Style)", type=["xlsx", "csv"])
+layout_file = st.file_uploader("📌 Upload layout file (Style, Jobtitle, Machine)", type=["xlsx", "csv"])
 
-    if st.button("🚀 รันตรวจสอบข้อมูล"):
-        # ---------------------------------------------------------
-        # 2. Load data
-        # ---------------------------------------------------------
-        st.write("📖 กำลังอ่านข้อมูลจากไฟล์...")
-        manpower = pd.read_csv(manpower_file)
-        stylelist = pd.read_csv(stylelist_file)
-        raweff = pd.read_csv(raweff_file, low_memory=False)
+# -------------------------------------------------------
+# 2. Process When All Files Are Uploaded
+# -------------------------------------------------------
+if loc_file and style_file and layout_file:
 
-        # lowercase columns
-        manpower.columns = manpower.columns.str.lower()
-        stylelist.columns = stylelist.columns.str.lower()
-        raweff.columns = raweff.columns.str.lower()
+    # Read files
+    def read_file(file):
+        if file.name.endswith(".csv"):
+            return pd.read_csv(file)
+        return pd.read_excel(file)
 
-        # check required columns
-        required_cols_manpower = {"id", "line"}
-        required_cols_stylelist = {"line", "style"}
-        required_cols_raweff = {"id", "line", "eff"}
+    df_loc = read_file(loc_file)
+    df_style = read_file(style_file)
+    df_layout = read_file(layout_file)
 
-        for name, df, required in [
-            ("manpower", manpower, required_cols_manpower),
-            ("stylelist", stylelist, required_cols_stylelist),
-            ("raweff", raweff, required_cols_raweff)
-        ]:
-            missing = required - set(df.columns)
-            if missing:
-                st.error(f"❌ ไฟล์ {name} ขาดคอลัมน์: {missing}")
-                st.stop()
+    st.success("✔ โหลดไฟล์สำเร็จ! กำลังประมวลผล...")
 
-        # ---------------------------------------------------------
-        # 3. Merge data
-        # ---------------------------------------------------------
-        st.write("⚙️ กำลังรวมข้อมูล ID, Line, Style ...")
-        merged = pd.merge(manpower, stylelist, on="line", how="left")
-        final_table = merged[["id", "line", "style"]].copy()
+    # -------------------------------------------------------
+    # 3. Filter layout → เฉพาะ Style ที่อยู่ใน style_list
+    # -------------------------------------------------------
+    df_layout_filtered = df_layout[df_layout["Style"].isin(df_style["Style"])]
 
-        # fill eff from raweff
-        st.write("🔍 กำลังเติมค่า eff ...")
-        final_table = pd.merge(final_table, raweff[["id", "style", "eff"]],
-                               on=["id", "style"], how="left")
+    # -------------------------------------------------------
+    # 4. Cartesian Product → Lines × layout_filtered
+    # -------------------------------------------------------
+    df_loc["key"] = 1
+    df_layout_filtered["key"] = 1
 
-        # ---------------------------------------------------------
-        # 4. Filter missing eff
-        # ---------------------------------------------------------
-        missing_eff = final_table[final_table["eff"].isna()].sort_values(by=["line", "id"])
+    df_output = df_loc.merge(df_layout_filtered, on="key").drop("key", axis=1)
 
-        if missing_eff.empty:
-            st.success("✅ ไม่มีพนักงานที่ eff ว่าง ทุกคนมีข้อมูลครบแล้ว")
-        else:
-            st.warning(f"⚠️ พบพนักงานที่ไม่มี eff จำนวน {len(missing_eff)} คน")
-            st.dataframe(missing_eff, use_container_width=True)
+    # -------------------------------------------------------
+    # 5. Show Result
+    # -------------------------------------------------------
+    st.subheader("📄 ผลลัพธ์ที่สร้าง (Preview)")
+    st.dataframe(df_output, use_container_width=True)
 
-            # ---------------------------------------------------------
-            # 5. Download missing data
-            # ---------------------------------------------------------
-            csv = missing_eff.to_csv(index=False, encoding="utf-8-sig")
-            st.download_button(
-                label="💾 ดาวน์โหลดไฟล์ missing_eff.csv",
-                data=csv,
-                file_name="missing_eff.csv",
-                mime="text/csv"
-            )
+    # -------------------------------------------------------
+    # 6. Download Result as Excel
+    # -------------------------------------------------------
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Result")
+        return output.getvalue()
+
+    excel_data = to_excel(df_output)
+
+    st.download_button(
+        label="📥 Download Excel File",
+        data=excel_data,
+        file_name="line_style_layout_output.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 else:
-    st.info("📥 กรุณาอัปโหลดไฟล์ CSV ทั้ง 3 ไฟล์ก่อนเริ่มทำงาน")
+    st.info("⬆ กรุณาอัปโหลดไฟล์ให้ครบ 3 ไฟล์เพื่อเริ่มประมวลผล")
