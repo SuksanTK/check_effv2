@@ -56,11 +56,10 @@ if loc_file and style_file and layout_file:
     # 6. Download Result as Excel
     # -------------------------------------------------------
     def to_excel(df):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Result")
-        return output.getvalue()
-
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Result")
+    return output.getvalue()
     excel_data = to_excel(df_output)
 
     st.download_button(
