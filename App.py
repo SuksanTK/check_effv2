@@ -60,7 +60,7 @@ if loc_file and style_file and layout_file:
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Result")
     return output.getvalue()
-    excel_data = to_excel(df_output)
+        excel_data = to_excel(df_output)
 
     st.download_button(
         label="📥 Download Excel File",
